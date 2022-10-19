@@ -4,16 +4,31 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+const BOLT_URL = "https://bolt.revos.in"
+const APP_TOKEN = import.meta.env.VITE_APP_TOKEN
+const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN
+
+const origin = { lat: 13.073393, lng: 77.744647 }
+const destination = { lat: 12.9120635, lng: 77.6478552 }
+
+let startMarker: google.maps.Marker | null = null
+let endMarker: google.maps.Marker | null = null
+
+let chargersArray: google.maps.Marker[] = []
+let waypointArray: google.maps.DirectionsWaypoint[] = []
+
+
 function initMap(): void {
   const directionsService = new google.maps.DirectionsService();
   const directionsRenderer = new google.maps.DirectionsRenderer({
-    routeIndex: 1
+    suppressMarkers: true,
   });
+
   const map = new google.maps.Map(
     document.getElementById("map") as HTMLElement,
     {
       zoom: 14,
-      center: { lat: 13.073393, lng:  77.744647 },
+      center: { lat: 13.073393, lng: 77.744647 },
     }
   );
 
@@ -22,90 +37,162 @@ function initMap(): void {
   (document.getElementById("submit") as HTMLElement).addEventListener(
     "click",
     () => {
-      calculateAndDisplayRoute(directionsService, map);
+      if (!startMarker)
+        startMarker = new google.maps.Marker({
+          position: origin,
+          label: "A",
+          map
+        })
+      if (!endMarker)
+        endMarker = new google.maps.Marker({
+          position: destination,
+          label: "B",
+          map
+        })
+
+      // Clear existing markers and routes
+      for (let charger of chargersArray) {
+        charger.setMap(null)
+      }
+      directionsRenderer.setMap(null)
+
+
+      calculateAndDisplayRoute(directionsService, directionsRenderer, map);
+
+      fetch(`${BOLT_URL}/charger/getAvailable?lat_top=${origin.lat}&lat_bottom=${destination.lat}&lng_left=${destination.lng}&lng_right=${origin.lng}`, {
+        headers: {
+          token: APP_TOKEN,
+          Authorization: `Bearer ${AUTH_TOKEN}`,
+        }
+      })
+        .then((res) => res.json())
+        .then((res) => {
+          chargersArray = res.data.map((el: any) => {
+            let position = {
+              lat: el.station.location.latitude,
+              lng: el.station.location.longitude,
+            }
+
+            let marker = createChargerMarker()
+
+            function createChargerMarker() {
+              let chargerMarker = new google.maps.Marker({
+                position,
+                icon: {
+                  url: "./images/charger-available.svg"
+                },
+                map,
+              })
+
+              const infoWindow = new google.maps.InfoWindow({
+                content: `<b>${el.charger.chargerId}</b><br/>Click to add waypoint`,
+                position,
+              });
+
+              chargerMarker.addListener("mouseover", () => {
+                infoWindow.open(chargerMarker.get("map"), chargerMarker);
+              });
+              chargerMarker.addListener("mouseout", () => {
+                infoWindow.close();
+              });
+              chargerMarker.addListener("click", () => {
+                if (waypointArray.length === 25) {
+                  window.alert("Max limit of 25 waypoints reached")
+                } else {
+                  waypointArray.push({ location: position, stopover: true } as google.maps.DirectionsWaypoint)
+                  directionsRenderer.setMap(null)
+                  calculateAndDisplayRoute(directionsService, directionsRenderer, map)
+                  chargerMarker.setMap(null)
+                  infoWindow.close()
+
+                  marker = createWaypointMarker(waypointArray.length - 1)
+                }
+
+              });
+
+              return chargerMarker
+            }
+
+            function createWaypointMarker(markerIndex) {
+              let waypointMarker = new google.maps.Marker({ position, map })
+
+              const infoWindow = new google.maps.InfoWindow({
+                content: `<b>${el.charger.chargerId}</b><br/>Click to remove waypoint`,
+                position,
+              });
+
+              waypointMarker.addListener("mouseover", () => {
+                infoWindow.open(waypointMarker.get("map"), waypointMarker);
+              });
+              waypointMarker.addListener("mouseout", () => {
+                infoWindow.close();
+              });
+              waypointMarker.addListener("click", () => {
+                waypointArray.splice(markerIndex, 1)
+                directionsRenderer.setMap(null)
+                calculateAndDisplayRoute(directionsService, directionsRenderer, map)
+                waypointMarker.setMap(null)
+                infoWindow.close()
+
+                marker = createChargerMarker()
+
+              })
+              return waypointMarker
+            }
+
+            return marker
+          }
+          )
+        })
+        .catch((err) => {
+          console.error(err)
+        })
     }
   );
 }
 
-
-
-var coordinates = [
-  [13.039311783608984, 77.7297654747963],
-  [13.024960825912101, 77.71899506449698],
-  // [13.025025829280144, 77.71905608475208],
-  // [13.025097038980325, 77.71895784884691],
-  // [13.024994470873581, 77.71307978779078],
-  // [13.019993407526382, 77.70816262811421],
-  // [13.017807411358602, 77.70489368587732],
-  // [13.043769279391954, 77.70928177982567],
-  // [13.055266223018355, 77.70612817257641],
-  // [13.055115002486366, 77.7059756219387],
-  // [13.05180347826083, 77.69266683608294],
-  // [13.051958293578691, 77.69282709807158],
-  // [13.040264238345669, 77.67804443836212],
-  // [13.052051052077113, 77.68412768840788],
-  // [13.051838099416269, 77.68401101231575],
-  // [13.055996522168197, 77.65488054603338],
-  // [13.056219596120359, 77.65764221549036],
-  // [13.053695549957606, 77.66208160668612],
-  // [13.053635779918432, 77.66204405575989],
-  // [13.053629900897405, 77.6621774956584],
-  // [13.052924743971955, 77.66131181269884],
-  // [13.052855175347345, 77.66134098172188],
-  // [13.052890776195254, 77.66138523817062],
-  // [13.052889143128958, 77.66135338693857],
-  // [13.053626308162267, 77.66251511871815],
-]
-
-async function calculateWaypoints(){
-
-  var wapointsArray = await Promise.all(coordinates.map((data) => {
-    var waypnt =  { location: new google.maps.LatLng(data[0], data[1]), stopover: true}
-    return waypnt
-  }))
-  return wapointsArray
-}
-
 async function calculateAndDisplayRoute(
   directionsService: google.maps.DirectionsService,
+  directionsRenderer: google.maps.DirectionsRenderer,
   map: google.maps.Map
 ) {
-  let waypointCoordinates = await calculateWaypoints();
   directionsService
     .route({
-      origin: {location: { lat: 13.073393, lng:  77.744647 }},                // DeFiner Kingdom
-      destination: {location: { lat: 12.9120635, lng:  77.6478552 }},         // Bolt.earth
+      origin: { location: origin },                // DeFiner Kingdom
+      destination: { location: destination },         // Bolt.earth
       // waypoints: [
-      //   // {location: new google.maps.LatLng([12.9532701,77.708739), stopover: true},           // Iron Hills
-      //   // {location: new google.maps.LatLng([12.9391073,77.7354752), stopover: true},          // Sobha, Dream Acre
+      //   { location: new google.maps.LatLng(12.9532701, 77.708739), stopover: true },           // Iron Hills
+      //   { location: new google.maps.LatLng(12.9391073, 77.7354752), stopover: true },          // Sobha, Dream Acre
       // ],
-      waypoints: waypointCoordinates,
+      waypoints: waypointArray,
       optimizeWaypoints: true,
       travelMode: google.maps.TravelMode.DRIVING,
-      provideRouteAlternatives: true
+      provideRouteAlternatives: false,
     })
     .then((response) => {
-      console.log(response.routes)
-      
       const alternateSummaryPanel = document.getElementById(
         "directions-panel-alternate"
       ) as HTMLElement;
 
       alternateSummaryPanel.innerHTML = ""
-      for (let j = 0 ; j < response.routes.length ; j++){
+      for (let j = 0; j < response.routes.length; j++) {
         let route = response.routes[j]
 
-        let newDirectionsRendere = new google.maps.DirectionsRenderer({
+        directionsRenderer.setOptions({
           draggable: true,
           hideRouteList: false,
           routeIndex: j
         })
-        newDirectionsRendere.setMap(map)
-        newDirectionsRendere.setDirections(response);
+        directionsRenderer.setMap(map)
+        directionsRenderer.setDirections(response);
+
+        const routeIndex = j + 1;
+        alternateSummaryPanel.innerHTML +=
+          "<b>Route Index: " + routeIndex + "</b><br>";
 
         // For each route, display summary information.
         for (let i = 0; i < route.legs.length; i++) {
-          const routeSegment = j + 1;
+          const routeSegment = i + 1;
           alternateSummaryPanel.innerHTML +=
             "<b>Route Segment: " + routeSegment + "</b><br>";
           alternateSummaryPanel.innerHTML += route.legs[i].start_address + " to ";
@@ -124,4 +211,4 @@ declare global {
   }
 }
 window.initMap = initMap;
-export {};
+export { };
