@@ -8,201 +8,279 @@ const BOLT_URL = "https://bolt.revos.in"
 const APP_TOKEN = import.meta.env.VITE_APP_TOKEN
 const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN
 
-const origin = { lat: 13.073393, lng: 77.744647 }
-const destination = { lat: 12.9120635, lng: 77.6478552 }
-
-let startMarker: google.maps.Marker | null = null
-let endMarker: google.maps.Marker | null = null
-
-let chargersArray: google.maps.Marker[] = []
-let waypointArray: google.maps.DirectionsWaypoint[] = []
-
-
 function initMap(): void {
-  const directionsService = new google.maps.DirectionsService();
-  const directionsRenderer = new google.maps.DirectionsRenderer({
-    suppressMarkers: true,
-  });
 
   const map = new google.maps.Map(
     document.getElementById("map") as HTMLElement,
     {
+      mapTypeControl: false,
       zoom: 14,
       center: { lat: 13.073393, lng: 77.744647 },
     }
   );
 
-  directionsRenderer.setMap(map);
+  new AutocompleteDirectionsHandler(map);
 
-  (document.getElementById("submit") as HTMLElement).addEventListener(
-    "click",
-    () => {
-      if (!startMarker)
-        startMarker = new google.maps.Marker({
-          position: origin,
-          label: "A",
-          map
-        })
-      if (!endMarker)
-        endMarker = new google.maps.Marker({
-          position: destination,
-          label: "B",
-          map
-        })
-
-      // Clear existing markers and routes
-      for (let charger of chargersArray) {
-        charger.setMap(null)
-      }
-      directionsRenderer.setMap(null)
-
-
-      calculateAndDisplayRoute(directionsService, directionsRenderer, map);
-
-      fetch(`${BOLT_URL}/charger/getAvailable?lat_top=${origin.lat}&lat_bottom=${destination.lat}&lng_left=${destination.lng}&lng_right=${origin.lng}`, {
-        headers: {
-          token: APP_TOKEN,
-          Authorization: `Bearer ${AUTH_TOKEN}`,
-        }
-      })
-        .then((res) => res.json())
-        .then((res) => {
-          chargersArray = res.data.map((el: any) => {
-            let position = {
-              lat: el.station.location.latitude,
-              lng: el.station.location.longitude,
-            }
-
-            let marker = createChargerMarker()
-
-            function createChargerMarker() {
-              let chargerMarker = new google.maps.Marker({
-                position,
-                icon: {
-                  url: "./images/charger-available.svg"
-                },
-                map,
-              })
-
-              const infoWindow = new google.maps.InfoWindow({
-                content: `<b>${el.charger.chargerId}</b><br/>Click to add waypoint`,
-                position,
-              });
-
-              chargerMarker.addListener("mouseover", () => {
-                infoWindow.open(chargerMarker.get("map"), chargerMarker);
-              });
-              chargerMarker.addListener("mouseout", () => {
-                infoWindow.close();
-              });
-              chargerMarker.addListener("click", () => {
-                if (waypointArray.length === 25) {
-                  window.alert("Max limit of 25 waypoints reached")
-                } else {
-                  waypointArray.push({ location: position, stopover: true } as google.maps.DirectionsWaypoint)
-                  directionsRenderer.setMap(null)
-                  calculateAndDisplayRoute(directionsService, directionsRenderer, map)
-                  chargerMarker.setMap(null)
-                  infoWindow.close()
-
-                  marker = createWaypointMarker(waypointArray.length - 1)
-                }
-
-              });
-
-              return chargerMarker
-            }
-
-            function createWaypointMarker(markerIndex) {
-              let waypointMarker = new google.maps.Marker({ position, map })
-
-              const infoWindow = new google.maps.InfoWindow({
-                content: `<b>${el.charger.chargerId}</b><br/>Click to remove waypoint`,
-                position,
-              });
-
-              waypointMarker.addListener("mouseover", () => {
-                infoWindow.open(waypointMarker.get("map"), waypointMarker);
-              });
-              waypointMarker.addListener("mouseout", () => {
-                infoWindow.close();
-              });
-              waypointMarker.addListener("click", () => {
-                waypointArray.splice(markerIndex, 1)
-                directionsRenderer.setMap(null)
-                calculateAndDisplayRoute(directionsService, directionsRenderer, map)
-                waypointMarker.setMap(null)
-                infoWindow.close()
-
-                marker = createChargerMarker()
-
-              })
-              return waypointMarker
-            }
-
-            return marker
-          }
-          )
-        })
-        .catch((err) => {
-          console.error(err)
-        })
-    }
-  );
 }
 
-async function calculateAndDisplayRoute(
-  directionsService: google.maps.DirectionsService,
-  directionsRenderer: google.maps.DirectionsRenderer,
-  map: google.maps.Map
-) {
-  directionsService
-    .route({
-      origin: { location: origin },                // DeFiner Kingdom
-      destination: { location: destination },         // Bolt.earth
-      // waypoints: [
-      //   { location: new google.maps.LatLng(12.9532701, 77.708739), stopover: true },           // Iron Hills
-      //   { location: new google.maps.LatLng(12.9391073, 77.7354752), stopover: true },          // Sobha, Dream Acre
-      // ],
-      waypoints: waypointArray,
-      optimizeWaypoints: true,
-      travelMode: google.maps.TravelMode.DRIVING,
-      provideRouteAlternatives: false,
-    })
-    .then((response) => {
-      const alternateSummaryPanel = document.getElementById(
-        "directions-panel-alternate"
-      ) as HTMLElement;
+class AutocompleteDirectionsHandler {
+  map: google.maps.Map;
+  originPlaceId: string;
+  destinationPlaceId: string;
+  startMarker: google.maps.Marker | null;
+  endMarker: google.maps.Marker | null;
+  chargerMarkers: google.maps.Marker[];
+  waypointMarkers: google.maps.Marker[];
+  waypoints: google.maps.DirectionsWaypoint[];
+  directionsService: google.maps.DirectionsService;
+  directionsRenderer: google.maps.DirectionsRenderer;
 
-      alternateSummaryPanel.innerHTML = ""
-      for (let j = 0; j < response.routes.length; j++) {
-        let route = response.routes[j]
+  constructor(map: google.maps.Map) {
+    this.map = map;
+    this.originPlaceId = "";
+    this.destinationPlaceId = "";
+    this.startMarker = null;
+    this.endMarker = null;
+    this.chargerMarkers = [];
+    this.waypointMarkers = [];
+    this.waypoints = [];
+    this.directionsService = new google.maps.DirectionsService();
+    this.directionsRenderer = new google.maps.DirectionsRenderer({
+      suppressMarkers: true,
+    });
+    this.directionsRenderer.setMap(map);
 
-        directionsRenderer.setOptions({
-          draggable: true,
-          hideRouteList: false,
-          routeIndex: j
-        })
-        directionsRenderer.setMap(map)
-        directionsRenderer.setDirections(response);
+    const originInput = document.getElementById(
+      "origin-input"
+    ) as HTMLInputElement;
+    const destinationInput = document.getElementById(
+      "destination-input"
+    ) as HTMLInputElement;
 
-        const routeIndex = j + 1;
-        alternateSummaryPanel.innerHTML +=
-          "<b>Route Index: " + routeIndex + "</b><br>";
+    // Specify just the place data fields that you need.
+    const originAutocomplete = new google.maps.places.Autocomplete(
+      originInput,
+      { fields: ["place_id"] }
+    );
 
-        // For each route, display summary information.
-        for (let i = 0; i < route.legs.length; i++) {
-          const routeSegment = i + 1;
-          alternateSummaryPanel.innerHTML +=
-            "<b>Route Segment: " + routeSegment + "</b><br>";
-          alternateSummaryPanel.innerHTML += route.legs[i].start_address + " to ";
-          alternateSummaryPanel.innerHTML += route.legs[i].end_address + "<br>";
-          alternateSummaryPanel.innerHTML += route.legs[i].distance!.text + "<br>";
-          alternateSummaryPanel.innerHTML += route.legs[i].duration!.text + "<br><br>";
+    // Specify just the place data fields that you need.
+    const destinationAutocomplete = new google.maps.places.Autocomplete(
+      destinationInput,
+      { fields: ["place_id"] }
+    );
+
+    this.setupPlaceChangedListener(originAutocomplete, "ORIG");
+    this.setupPlaceChangedListener(destinationAutocomplete, "DEST");
+
+    this.map.controls[google.maps.ControlPosition.TOP_LEFT].push(originInput);
+    this.map.controls[google.maps.ControlPosition.TOP_LEFT].push(
+      destinationInput
+    );
+
+  }
+
+  setupPlaceChangedListener(
+    autocomplete: google.maps.places.Autocomplete,
+    mode: string
+  ) {
+    autocomplete.bindTo("bounds", this.map);
+
+    autocomplete.addListener("place_changed", () => {
+      const place = autocomplete.getPlace();
+
+      if (!place.place_id) {
+        window.alert("Please select an option from the dropdown list.");
+        return;
+      }
+
+      for (let charger of this.chargerMarkers) {
+        charger.setMap(null)
+      }
+      for (let waypoint of this.waypointMarkers) {
+        waypoint.setMap(null)
+      }
+      this.waypoints = [];
+
+      let request = {
+        placeId: place.place_id,
+        fields: ["geometry"]
+      }
+
+      let service = new google.maps.places.PlacesService(this.map);
+      const callback = (
+        place: google.maps.places.PlaceResult | null,
+        status: google.maps.places.PlacesServiceStatus
+      ) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK) {
+          if (mode === "ORIG") {
+            this.startMarker?.setMap(null)
+            this.startMarker = new google.maps.Marker({
+              position: place?.geometry?.location,
+              label: "A",
+              map: this.map
+            })
+          } else {
+            this.endMarker?.setMap(null)
+            this.endMarker = new google.maps.Marker({
+              position: place?.geometry?.location,
+              label: "B",
+              map: this.map
+            })
+          }
         }
       }
+      service.getDetails(request, callback)
+
+      if (mode === "ORIG") {
+        this.originPlaceId = place.place_id;
+      } else {
+        this.destinationPlaceId = place.place_id;
+      }
+
+      this.route();
+    });
+  }
+
+  route(shouldGetChargers = true) {
+    if (!this.originPlaceId || !this.destinationPlaceId) {
+      return;
+    }
+
+    const me = this;
+
+    this.directionsService.route(
+      {
+        origin: { placeId: this.originPlaceId },
+        destination: { placeId: this.destinationPlaceId },
+        travelMode: google.maps.TravelMode.DRIVING,
+
+        waypoints: this.waypoints,
+        optimizeWaypoints: true,
+        provideRouteAlternatives: false,
+      },
+      (response, status) => {
+        if (status === "OK" && response) {
+          me.directionsRenderer.setDirections(response);
+
+          if (shouldGetChargers) {
+            this.getChargers(response.routes[0].bounds)
+          }
+
+        } else {
+          window.alert("Directions request failed due to " + status);
+        }
+      }
+    );
+  }
+
+  getChargers(
+    bounds: google.maps.LatLngBounds,
+  ) {
+
+    const lat_top = bounds.getNorthEast().lat()
+    const lat_bottom = bounds.getSouthWest().lat()
+    const lng_left = bounds.getSouthWest().lng()
+    const lng_right = bounds.getNorthEast().lng()
+
+    fetch(`${BOLT_URL}/charger/getAvailable?lat_top=${lat_top}&lat_bottom=${lat_bottom}&lng_left=${lng_left}&lng_right=${lng_right}`, {
+      headers: {
+        token: APP_TOKEN,
+        Authorization: `Bearer ${AUTH_TOKEN}`,
+      }
     })
-    .catch((e) => window.alert("Directions request failed due to " + e.message));
+      .then((res) => res.json())
+      .then((res) => {
+        if (!res.data.length) window.alert("No chargers found")
+        else res.data.forEach((el: any, i: number) => {
+          const position = new google.maps.LatLng({
+            lat: el.station.location.latitude,
+            lng: el.station.location.longitude,
+          })
+          this.createChargerMarker(position, el.charger.chargerId)
+        })
+      })
+      .catch((err) => {
+        console.error(err)
+      })
+
+  }
+
+  createChargerMarker(position: google.maps.LatLng, chargerId: string) {
+    let chargerMarker = new google.maps.Marker({
+      position,
+      icon: {
+        url: "./images/charger-available.svg"
+      },
+      map: this.map,
+    })
+
+    const infoWindow = new google.maps.InfoWindow({
+      content: `<b>${chargerId}</b><br/>Click to add waypoint`,
+      position,
+    });
+
+    chargerMarker.addListener("mouseover", () => {
+      infoWindow.open(chargerMarker.get("map"), chargerMarker);
+    });
+    chargerMarker.addListener("mouseout", () => {
+      infoWindow.close();
+    });
+    chargerMarker.addListener("click", () => {
+
+      if (this.waypoints.length === 25) {
+        window.alert("Max limit of 25 waypoints reached")
+      } else {
+        let markerIndex = this.chargerMarkers.findIndex(el => el.getPosition()?.toString() === position.toString())
+        chargerMarker.setMap(null)
+        this.chargerMarkers.splice(markerIndex, 1)
+
+        this.createWaypointMarker(position, chargerId)
+        this.route(false)
+        infoWindow.close()
+      }
+
+    });
+
+    this.chargerMarkers.push(chargerMarker)
+
+  }
+
+  createWaypointMarker(position: google.maps.LatLng, chargerId: string) {
+    let waypointMarker = new google.maps.Marker({
+      position,
+      map: this.map,
+    })
+
+    const infoWindow = new google.maps.InfoWindow({
+      content: `<b>${chargerId}</b><br/>Click to remove waypoint`,
+      position,
+    });
+
+    waypointMarker.addListener("mouseover", () => {
+      infoWindow.open(waypointMarker.get("map"), waypointMarker);
+    });
+    waypointMarker.addListener("mouseout", () => {
+      infoWindow.close();
+    });
+    waypointMarker.addListener("click", () => {
+      let markerIndex = this.waypointMarkers.findIndex(el => el.getPosition()?.toString() === position.toString())
+      if (markerIndex !== -1) this.waypointMarkers.splice(markerIndex, 1)
+
+      let waypointIndex = this.waypoints.findIndex(el => el.location?.toString() === position.toString())
+      if (waypointIndex !== -1) this.waypoints.splice(waypointIndex, 1)
+
+      waypointMarker.setMap(null)
+
+      this.createChargerMarker(position, chargerId)
+      this.route(false)
+      infoWindow.close()
+
+    });
+
+    this.waypoints.push({ location: position, stopover: true } as google.maps.DirectionsWaypoint);
+    this.waypointMarkers.push(waypointMarker)
+
+  }
 }
 
 declare global {

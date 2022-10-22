@@ -1,9 +1,14 @@
-/**
- * @license
- * Copyright 2019 Google LLC. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0
+/* 
+ * Always set the map height explicitly to define the size of the div element
+ * that contains the map. 
  */
-/* Optional: Makes the sample page fill the window. */
+ #map {
+  height: 100%;
+}
+
+/* 
+ * Optional: Makes the sample page fill the window. 
+ */
 html,
 body {
   height: 100%;
@@ -11,28 +16,31 @@ body {
   padding: 0;
 }
 
-#container {
-  height: 100%;
-  display: flex;
-}
-
-#sidebar {
-  flex-basis: 15rem;
-  flex-grow: 1;
-  padding: 1rem;
-  max-width: 30rem;
-  height: 100%;
-  box-sizing: border-box;
-  overflow: auto;
-}
-
-#map {
-  flex-basis: 0;
-  flex-grow: 4;
-  height: 100%;
-}
-
-#directions-panel {
+.controls {
   margin-top: 10px;
+  border: 1px solid transparent;
+  border-radius: 2px 0 0 2px;
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  height: 32px;
+  outline: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+#origin-input,
+#destination-input {
+  background-color: #fff;
+  font-family: Roboto;
+  font-size: 15px;
+  font-weight: 300;
+  margin-left: 12px;
+  padding: 0 11px 0 13px;
+  text-overflow: ellipsis;
+  width: 200px;
+}
+
+#origin-input:focus,
+#destination-input:focus {
+  border-color: #4d90fe;
 }
 

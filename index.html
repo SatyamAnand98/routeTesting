@@ -13,16 +13,23 @@
     <script type="module" src="./index.ts"></script>
   </head>
   <body>
-    <div id="container">
-      <div id="map"></div>
-      <div id="sidebar">
-        <div>
-          <input type="submit" id="submit" />
-        </div>
-        <div id="directions-panel"></div>
-        <div id="directions-panel-alternate"></div>
-      </div>
+    <div style="display: none">
+      <input
+        id="origin-input"
+        class="controls"
+        type="text"
+        placeholder="Enter an origin location"
+      />
+
+      <input
+        id="destination-input"
+        class="controls"
+        type="text"
+        placeholder="Enter a destination location"
+      />
     </div>
+
+    <div id="map"></div>
 
     <!-- 
      The `defer` attribute causes the callback to execute after the full HTML
@@ -31,7 +38,7 @@
      with https://www.npmjs.com/package/@googlemaps/js-api-loader.
     -->
     <script
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBPPkwK8voLg73XR9xvR9xuoKqyfzu7Gac&callback=initMap&v=weekly"
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBPPkwK8voLg73XR9xvR9xuoKqyfzu7Gac&callback=initMap&libraries=places&v=weekly"
       defer
     ></script>
   </body>
