@@ -13,23 +13,31 @@
     <script type="module" src="./index.ts"></script>
   </head>
   <body>
-    <div style="display: none">
-      <input
-        id="origin-input"
-        class="controls"
-        type="text"
-        placeholder="Enter an origin location"
-      />
+    <div id="container">
+      <div style="display: none">
+        <input
+          id="origin-input"
+          class="controls"
+          type="text"
+          placeholder="Enter an origin location"
+        />
 
-      <input
-        id="destination-input"
-        class="controls"
-        type="text"
-        placeholder="Enter a destination location"
-      />
+        <input
+          id="destination-input"
+          class="controls"
+          type="text"
+          placeholder="Enter a destination location"
+        />
+      </div>
+
+      <div id="map"></div>
+      <div id="sidebar">
+        <div>
+          <input type="submit" id="submit" />
+        </div>
+        <div id="directions-panel"></div>
+      </div>
     </div>
-
-    <div id="map"></div>
 
     <!-- 
      The `defer` attribute causes the callback to execute after the full HTML
