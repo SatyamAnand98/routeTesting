@@ -198,9 +198,10 @@ class AutocompleteDirectionsHandler {
               summaryPanel.innerHTML += route.legs[i].distance!.text + "<br><br>";
             }
 
-          }
-          if (shouldGetChargers) {
-            this.getChargers(response.routes[0].bounds);
+            if (shouldGetChargers) {
+              this.getChargers(response.routes[j].bounds);
+            }
+
           }
         } else {
           window.alert("Directions request failed due to " + status);
@@ -216,24 +217,27 @@ class AutocompleteDirectionsHandler {
     const lng_right = bounds.getNorthEast().lng();
 
     fetch(
-      `${BOLT_URL}/charger/getAvailable?lat_top=${lat_top}&lat_bottom=${lat_bottom}&lng_left=${lng_left}&lng_right=${lng_right}`,
+      // `${BOLT_URL}/charger/getAvailable?lat_top=${lat_top}&lat_bottom=${lat_bottom}&lng_left=${lng_left}&lng_right=${lng_right}`,
+      `${BOLT_URL}/charger/clusters?lat_bottom=${lat_bottom}&lat_top=${lat_top}&lng_left=${lng_left}&lng_right=${lng_right}&zoom=14&minZoom=7&maxZoom=12&radius=120`,
       {
+        method: 'GET',
         headers: {
           token: APP_TOKEN,
           Authorization: `Bearer ${AUTH_TOKEN}`,
         },
+        redirect: 'follow'
       }
     )
       .then((res) => res.json())
       .then((res) => {
-        if (!res.data.length) window.alert("No chargers found");
+        if (!res.data.chargers.length) window.alert("No chargers found");
         else
-          res.data.forEach((el: any, i: number) => {
+          res.data.chargers.forEach((el: any, i: number) => {
             const position = new google.maps.LatLng({
-              lat: el.station.location.latitude,
-              lng: el.station.location.longitude,
+              lat: el.geometry.coordinates[1],
+              lng: el.geometry.coordinates[0],
             });
-            this.createChargerMarker(position, el.charger.chargerId);
+            this.createChargerMarker(position, el.chargerId);
           });
       })
       .catch((err) => {
