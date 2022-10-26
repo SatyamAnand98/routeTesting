@@ -32,6 +32,7 @@ class AutocompleteDirectionsHandler {
   waypoints: google.maps.DirectionsWaypoint[];
   directionsService: google.maps.DirectionsService;
   directionsRenderer: google.maps.DirectionsRenderer;
+  alternateRouteRenderers: google.maps.DirectionsRenderer[];
 
   constructor(map: google.maps.Map) {
     this.map = map;
@@ -45,8 +46,9 @@ class AutocompleteDirectionsHandler {
     this.directionsService = new google.maps.DirectionsService();
     this.directionsRenderer = new google.maps.DirectionsRenderer({
       suppressMarkers: true,
+      map
     });
-    this.directionsRenderer.setMap(map);
+    this.alternateRouteRenderers = [];
 
     const originInput = document.getElementById(
       "origin-input"
@@ -143,8 +145,6 @@ class AutocompleteDirectionsHandler {
       return;
     }
 
-    const me = this;
-
     this.directionsService.route(
       {
         origin: { placeId: this.originPlaceId },
@@ -157,51 +157,50 @@ class AutocompleteDirectionsHandler {
       },
       (response, status) => {
         if (status === "OK" && response) {
-          // me.directionsRenderer.setDirections(response);
+          // Render main route
+          this.directionsRenderer.setDirections(response);
 
-          /**
-           * This is to display in the direction panel
-           */
-          const alternateSummaryPanel = document.getElementById(
+          // Clear existing alternate routes
+          for (let renderer of this.alternateRouteRenderers) {
+            renderer.setMap(null)
+          }
+
+          const summaryPanel = document.getElementById(
             "directions-panel"
           ) as HTMLElement;
+          summaryPanel.innerHTML = "";
 
-          alternateSummaryPanel.innerHTML = "";
           for (let j = 0; j < response.routes.length; j++) {
             let route = response.routes[j];
 
-            // let newDirectionsRendere = new google.maps.DirectionsRenderer({
-            //   suppressMarkers: true,
-            //   draggable: true,
-            //   hideRouteList: false,
-            //   routeIndex: j,
-            // });
+            // Render alternate routes
+            if (j !== 0) {
+              this.alternateRouteRenderers.push(new google.maps.DirectionsRenderer({
+                directions: response,
+                routeIndex: j,
+                map: this.map,
+                suppressMarkers: true,
+              }))
+            }
 
-            me.directionsRenderer.setOptions({
-              draggable: true,
-              hideRouteList: false,
-              routeIndex: j
-            })
-            
-            me.directionsRenderer.setDirections(response);
+            const routeIndex = j + 1;
+            summaryPanel.innerHTML +=
+              "<b>Route Index: " + routeIndex + "</b><br>";
 
             // For each route, display summary information.
             for (let i = 0; i < route.legs.length; i++) {
-              const routeSegment = j + 1;
-              alternateSummaryPanel.innerHTML +=
+              const routeSegment = i + 1;
+
+              summaryPanel.innerHTML +=
                 "<b>Route Segment: " + routeSegment + "</b><br>";
-              alternateSummaryPanel.innerHTML +=
-                route.legs[i].start_address + " to ";
-              alternateSummaryPanel.innerHTML +=
-                route.legs[i].end_address + "<br>";
-              alternateSummaryPanel.innerHTML +=
-                route.legs[i].distance!.text + "<br>";
-              alternateSummaryPanel.innerHTML +=
-                route.legs[i].duration!.text + "<br><br>";
+              summaryPanel.innerHTML += route.legs[i].start_address + " to ";
+              summaryPanel.innerHTML += route.legs[i].end_address + "<br>";
+              summaryPanel.innerHTML += route.legs[i].distance!.text + "<br><br>";
             }
-            if (shouldGetChargers) {
-              this.getChargers(response.routes[j].bounds);
-            }
+
+          }
+          if (shouldGetChargers) {
+            this.getChargers(response.routes[0].bounds);
           }
         } else {
           window.alert("Directions request failed due to " + status);
@@ -330,4 +329,4 @@ declare global {
   }
 }
 window.initMap = initMap;
-export {};
+export { };
