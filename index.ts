@@ -3,6 +3,7 @@
  * Copyright 2019 Google LLC. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
+import * as geolib from 'geolib';
 
 const BOLT_URL = "https://bolt.revos.in";
 const APP_TOKEN = import.meta.env.VITE_APP_TOKEN;
@@ -48,6 +49,7 @@ class AutocompleteDirectionsHandler {
       suppressMarkers: true,
       map
     });
+    this.directionsRenderer.setPanel(document.getElementById("sidebar") as HTMLElement)
     this.alternateRouteRenderers = [];
 
     const originInput = document.getElementById(
@@ -144,31 +146,85 @@ class AutocompleteDirectionsHandler {
     if (!this.originPlaceId || !this.destinationPlaceId) {
       return;
     }
+    // var numOfHours = 1;
+    // var date = new Date()
+    // var currentTime = date.setTime(date.getTime() + numOfHours * 60 * 60 * 1000);
 
     this.directionsService.route(
       {
         origin: { placeId: this.originPlaceId },
         destination: { placeId: this.destinationPlaceId },
         travelMode: google.maps.TravelMode.DRIVING,
-
+        // transitOptions: {
+        //   departureTime: new Date(currentTime),
+        //   modes: [google.maps.TransitMode.BUS],
+        //   routingPreference: google.maps.TransitRoutePreference.FEWER_TRANSFERS
+        // },
+        drivingOptions: {
+          departureTime: new Date(Date.now()),
+          trafficModel: google.maps.TrafficModel.OPTIMISTIC
+        },
+        unitSystem: google.maps.UnitSystem.METRIC,
         waypoints: this.waypoints,
         optimizeWaypoints: true,
         provideRouteAlternatives: true,
+        // avoidFerries: true,
+        // avoidHighways: true,
+        // avoidTolls: true,
+        // region: "India",
       },
       (response, status) => {
         if (status === "OK" && response) {
+          /**
+           * ENTER MILAGE IN METERS
+           */
+          const milage = 20 // in meters
+          const totalCountingOfChargerLocating = 1;
+          var distanceCovered = 0;
+          var chargerLocatingCount = 0;
+
+          // console.log("Route: ", response.routes[0])
+          // console.log("legs: ", response.routes[0].legs[0])
+
+          let boundingCoordinates = {}
+
+          response.routes[0].legs[0].steps.map((data) => {
+            distanceCovered += Number(data.distance?.value)
+            
+            let startLat = data.start_location.lat()
+            let startLng = data.start_location.lng()
+            let endLat = data.end_location.lat()
+            let endLng =  data.end_location.lng()
+
+            if(distanceCovered>=milage && totalCountingOfChargerLocating>chargerLocatingCount ){
+              boundingCoordinates={
+                minLng : startLng>=endLng? endLng: startLng,
+                maxLng : startLng<=endLng? endLng: startLng,
+                minLat : startLat>=endLat? endLat: startLat,
+                maxLat : startLat<=endLat? endLat: startLat
+              }
+
+              this.getOnRouteChargers(boundingCoordinates)
+
+              console.log(boundingCoordinates)
+              // console.log("start Location: ", data.start_location.lat(), data.start_location.lng())
+              // console.log("end Location: ", data.end_location.lat(), data.end_location.lng())
+              chargerLocatingCount += 1;
+            }
+          })
+
           // Render main route
           this.directionsRenderer.setDirections(response);
+
+          // response.routes[0].overview_path.map((data) => {
+          //   console.log(`coordinates: ${data.toString()}`)
+          // })
 
           // Clear existing alternate routes
           for (let renderer of this.alternateRouteRenderers) {
             renderer.setMap(null)
           }
 
-          const summaryPanel = document.getElementById(
-            "directions-panel"
-          ) as HTMLElement;
-          summaryPanel.innerHTML = "";
 
           for (let j = 0; j < response.routes.length; j++) {
             let route = response.routes[j];
@@ -183,31 +239,49 @@ class AutocompleteDirectionsHandler {
               }))
             }
 
-            const routeIndex = j + 1;
-            summaryPanel.innerHTML +=
-              "<b>Route Index: " + routeIndex + "</b><br>";
-
-            // For each route, display summary information.
-            for (let i = 0; i < route.legs.length; i++) {
-              const routeSegment = i + 1;
-
-              summaryPanel.innerHTML +=
-                "<b>Route Segment: " + routeSegment + "</b><br>";
-              summaryPanel.innerHTML += route.legs[i].start_address + " to ";
-              summaryPanel.innerHTML += route.legs[i].end_address + "<br>";
-              summaryPanel.innerHTML += route.legs[i].distance!.text + "<br><br>";
-            }
-
             if (shouldGetChargers) {
               this.getChargers(response.routes[j].bounds);
             }
-
           }
         } else {
           window.alert("Directions request failed due to " + status);
         }
       }
     );
+  }
+
+  getOnRouteChargers(bounds){
+    fetch(
+      `${BOLT_URL}/charger/clusters?lat_bottom=${bounds.minLat}&lat_top=${bounds.maxLat}&lng_left=${bounds.minLng}&lng_right=${bounds.maxLng}&zoom=14&minZoom=7&maxZoom=12&radius=120`,
+      {
+        method: 'GET',
+        headers: {
+          token: APP_TOKEN,
+          Authorization: `Bearer ${AUTH_TOKEN}`,
+        },
+        redirect: 'follow'
+      }
+    )
+      .then((res) => res.json())
+      .then((res) => {
+        console.log("Charger: ", res.data)
+        if (res.data.chargers.length)
+          res.data.chargers.forEach((el: any, i: number) => {
+            const position = new google.maps.LatLng({
+              lat: el.geometry.coordinates[1],
+              lng: el.geometry.coordinates[0],
+            });
+            this.waypoints.push({
+              location: position,
+              stopover: true,
+            });
+            this.route(false)
+            this.createWaypointMarker(position, el.chargerId);
+          });
+      })
+      .catch((err) => {
+        console.error(err.message);
+      });
   }
 
   getChargers(bounds: google.maps.LatLngBounds) {
@@ -217,7 +291,6 @@ class AutocompleteDirectionsHandler {
     const lng_right = bounds.getNorthEast().lng();
 
     fetch(
-      // `${BOLT_URL}/charger/getAvailable?lat_top=${lat_top}&lat_bottom=${lat_bottom}&lng_left=${lng_left}&lng_right=${lng_right}`,
       `${BOLT_URL}/charger/clusters?lat_bottom=${lat_bottom}&lat_top=${lat_top}&lng_left=${lng_left}&lng_right=${lng_right}&zoom=14&minZoom=7&maxZoom=12&radius=120`,
       {
         method: 'GET',
@@ -241,7 +314,7 @@ class AutocompleteDirectionsHandler {
           });
       })
       .catch((err) => {
-        console.error(err);
+        console.error(err.message);
       });
   }
 

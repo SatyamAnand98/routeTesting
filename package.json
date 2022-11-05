@@ -31,5 +31,7 @@
     "vite": "^2.9.9"
   },
   "private": true,
-  "dependencies": {}
+  "dependencies": {
+    "geolib": "^3.3.3"
+  }
 }
